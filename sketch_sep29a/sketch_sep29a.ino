@@ -8,7 +8,6 @@
 #define MOTOR_3 6
 #define MOTOR_4 9
 #define SENDER 0
-#define SERIAL 1
 #define X_LEFT A4
 #if SENDER
 #define CE_PIN 9
@@ -17,13 +16,14 @@
 #define CE_PIN 7
 #define CSN_PIN 8
 #endif
+#define PAYLOAD_LENGTH 4
 
 RF24 radio(CE_PIN, CSN_PIN);
 uint8_t address[][6] = { "1Node" };
 // It is very helpful to think of an address as a path instead of as
 // an identifying device destination
 int radioNumber = SENDER;  // 0 uses address[0] to transmit, 1 uses address[1] to transmit
-char payload = 0;
+uint8_t payload[PAYLOAD_LENGTH];
 
 void all(int speed) {
   analogWrite(MOTOR_1, speed);
@@ -33,29 +33,30 @@ void all(int speed) {
 }
 
 void setup() {
-  if (SERIAL) {
-    Serial.begin(115200);
-    while (!Serial) {
-    }
+  Serial.begin(115200);
+  if (Serial) {
     Serial.println("Serial initialized");
   }
-    if (!radio.begin()) {
+  if (!radio.begin()) {
     pinMode(LED_BUILTIN, OUTPUT);
+    if (Serial) {
+      Serial.println("Device is not responding");
+    }
     while (1) {
-      if (SERIAL) {
-        Serial.println("Device is not responding");
-      }
       digitalWrite(LED_BUILTIN, HIGH);
-    }  // hold in infinite loop
+      delay(1000);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(1000);
+    }
   } else {
-    if (SERIAL) {
+    if (Serial) {
       Serial.println("Nrf radio successfully connected");
     }
   }
   radio.setPALevel(RF24_PA_LOW);
   radio.setPayloadSize(sizeof(payload));
   if (!SENDER) {
-    pinMode(10, OUTPUT);
+    pinMode(10, OUTPUT); // set pin 10 for output, necessary for spi
     pinMode(MOTOR_1, OUTPUT);
     pinMode(MOTOR_2, OUTPUT);
     pinMode(MOTOR_3, OUTPUT);
@@ -67,7 +68,7 @@ void setup() {
     radio.openWritingPipe(address[0]);
     radio.stopListening();
   }
-  if (SERIAL) {
+  if (Serial) {
     Serial.println("Device set up successfully");
   }
 }
@@ -81,27 +82,30 @@ void loop() {
     if (val <= 0) {
       val = 0;
     }
-    val = val / 2;
-    payload = (char) val;
+    payload[0] = val;
     bool report = radio.write(&payload, sizeof(payload));
-    if (SERIAL) {
-      Serial.println(raw, DEC);
+    if (Serial) {
       Serial.println(val, DEC);
       if (report) {
         Serial.println("Message was successfully transmitted");
       } else {
-        Serial.println("No ack from receiver"); 
+        Serial.println("No ack from receiver");
       }
-      Serial.println(radio.isChipConnected());
     
     }
-    delay(1000);
+    delay(10);
   } else {
       if (radio.available()) {              // is there a payload? get the pipe number that recieved it
         uint8_t bytes = radio.getPayloadSize();  // get the size of the payload
         radio.read(&payload, bytes);             // fetch payload from FIFO
+        if (bytes != PAYLOAD_LENGTH) {
+          if (Serial) {
+            Serial.println("Invalid payload length");
+            continue;
+          }
+        }
         int speed = payload;
-        if (SERIAL) {
+        if (Serial) {
           Serial.print("Got payload");
           Serial.print(" Length ");
           Serial.print(bytes);
@@ -109,11 +113,7 @@ void loop() {
           Serial.println(payload, DEC);
         }
         all(speed);
-      } else {
-        if (SERIAL) {
-          Serial.println("No message received");
-        }
       }
-      delay(100);
+      delay(10);
   }
 }
