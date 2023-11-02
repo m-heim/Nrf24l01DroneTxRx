@@ -14,6 +14,8 @@
 
 #define PAYLOAD_LENGTH 4
 
+// TODO: Implement interrupt pin
+
 RF24 radio(CE_PIN, CSN_PIN);
 Servo servo;
 uint8_t address[][6] = { "1Node" };
